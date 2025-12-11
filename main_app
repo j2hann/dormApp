@@ -1,0 +1,326 @@
+import tkinter as tk
+from tkinter import messagebox, filedialog, ttk
+import os
+# This line imports the class from your other file
+from database_manager import DatabaseManager
+
+# --- GUI Application ---
+class DormApp(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("Dormitory Application System")
+        self.geometry("600x500")
+        self.configure(bg="#f0f0f0")
+        
+        # Initialize DB and Session
+        self.db = DatabaseManager()
+        self.currentUser = None # Stores user info if logged in
+        
+        # Container for frames
+        self.container = tk.Frame(self)
+        self.container.pack(fill="both", expand=True)
+        
+        self.frames = {}
+        
+        # Initialize all frames
+        for F in (StartupPage, LoginPage, RegisterPage, HomePage, UploadPage, DetailPage):
+            pageName = F.__name__
+            frame = F(parent=self.container, controller=self)
+            self.frames[pageName] = frame
+            frame.grid(row=0, column=0, sticky="nsew")
+        
+        self.showFrame("StartupPage")
+
+    def showFrame(self, pageName, data=None):
+        frame = self.frames[pageName]
+        frame.tkraise()
+        # If the frame has an 'onShow' method, call it (useful for refreshing data)
+        if hasattr(frame, "onShow"):
+            frame.onShow(data)
+
+    def login(self, user):
+        self.currentUser = user
+        self.showFrame("HomePage")
+    
+    def logout(self):
+        self.currentUser = None
+        self.showFrame("StartupPage")
+
+# --- Pages ---
+
+class StartupPage(tk.Frame):
+    def __init__(self, parent, controller):
+        super().__init__(parent, bg="#ffffff")
+        self.controller = controller
+        
+        tk.Label(self, text="Dormitory Application System", font=("Helvetica", 24, "bold"), bg="#ffffff", fg="#333").pack(pady=80)
+        
+        btnFrame = tk.Frame(self, bg="#ffffff")
+        btnFrame.pack(pady=20)
+        
+        tk.Button(btnFrame, text="Log In", font=("Arial", 14), width=15, bg="#007bff", fg="white", 
+                  command=lambda: controller.showFrame("LoginPage")).pack(pady=10)
+        
+        tk.Button(btnFrame, text="Register", font=("Arial", 14), width=15, bg="#28a745", fg="white",
+                  command=lambda: controller.showFrame("RegisterPage")).pack(pady=10)
+
+class LoginPage(tk.Frame):
+    def __init__(self, parent, controller):
+        super().__init__(parent, bg="#f0f0f0")
+        self.controller = controller
+        
+        tk.Label(self, text="User Login", font=("Arial", 20, "bold"), bg="#f0f0f0").pack(pady=40)
+        
+        inputFrame = tk.Frame(self, bg="#f0f0f0")
+        inputFrame.pack()
+        
+        tk.Label(inputFrame, text="Email:", bg="#f0f0f0", font=("Arial", 12)).grid(row=0, column=0, sticky="e", pady=5)
+        self.emailEntry = tk.Entry(inputFrame, width=30, font=("Arial", 12))
+        self.emailEntry.grid(row=0, column=1, pady=5)
+        
+        tk.Label(inputFrame, text="Password:", bg="#f0f0f0", font=("Arial", 12)).grid(row=1, column=0, sticky="e", pady=5)
+        self.passwordEntry = tk.Entry(inputFrame, width=30, show="*", font=("Arial", 12))
+        self.passwordEntry.grid(row=1, column=1, pady=5)
+        
+        tk.Button(self, text="Login", width=15, bg="#007bff", fg="white", command=self.handleLogin).pack(pady=20)
+        tk.Button(self, text="Back", command=lambda: controller.showFrame("StartupPage")).pack()
+
+    def handleLogin(self):
+        email = self.emailEntry.get()
+        password = self.passwordEntry.get()
+        
+        user = self.controller.db.verifyUser(email, password)
+        if user:
+            self.emailEntry.delete(0, tk.END)
+            self.passwordEntry.delete(0, tk.END)
+            self.controller.login(user)
+        else:
+            messagebox.showerror("Error", "Invalid Credentials")
+
+class RegisterPage(tk.Frame):
+    def __init__(self, parent, controller):
+        super().__init__(parent, bg="#f0f0f0")
+        self.controller = controller
+        
+        tk.Label(self, text="Create Account", font=("Arial", 20, "bold"), bg="#f0f0f0").pack(pady=30)
+        
+        inputFrame = tk.Frame(self, bg="#f0f0f0")
+        inputFrame.pack()
+        
+        # Helper to create fields
+        def createField(label, row):
+            tk.Label(inputFrame, text=label, bg="#f0f0f0", font=("Arial", 11)).grid(row=row, column=0, sticky="e", pady=5, padx=5)
+            entry = tk.Entry(inputFrame, width=30, font=("Arial", 11))
+            entry.grid(row=row, column=1, pady=5)
+            return entry
+            
+        self.firstNameEntry = createField("First Name:", 0)
+        self.lastNameEntry = createField("Last Name:", 1)
+        self.emailEntry = createField("Email:", 2)
+        
+        tk.Label(inputFrame, text="Password:", bg="#f0f0f0", font=("Arial", 11)).grid(row=3, column=0, sticky="e", pady=5, padx=5)
+        self.passwordEntry = tk.Entry(inputFrame, width=30, show="*", font=("Arial", 11))
+        self.passwordEntry.grid(row=3, column=1, pady=5)
+        
+        tk.Button(self, text="Register", width=15, bg="#28a745", fg="white", command=self.handleRegister).pack(pady=20)
+        tk.Button(self, text="Back", command=lambda: controller.showFrame("StartupPage")).pack()
+
+    def handleRegister(self):
+        firstName = self.firstNameEntry.get()
+        lastName = self.lastNameEntry.get()
+        email = self.emailEntry.get()
+        password = self.passwordEntry.get()
+        
+        if not all([firstName, lastName, email, password]):
+            messagebox.showwarning("Warning", "All fields are required")
+            return
+
+        if self.controller.db.registerUser(firstName, lastName, email, password):
+            messagebox.showinfo("Success", "Account created! Please log in.")
+            self.controller.showFrame("StartupPage")
+            # Clear fields
+            self.firstNameEntry.delete(0, tk.END)
+            self.lastNameEntry.delete(0, tk.END)
+            self.emailEntry.delete(0, tk.END)
+            self.passwordEntry.delete(0, tk.END)
+        else:
+            messagebox.showerror("Error", "Email already exists")
+
+class HomePage(tk.Frame):
+    def __init__(self, parent, controller):
+        super().__init__(parent, bg="#f0f0f0")
+        self.controller = controller
+        
+        # Header
+        headerFrame = tk.Frame(self, bg="#333", height=50)
+        headerFrame.pack(fill="x")
+        tk.Label(headerFrame, text="Dorm Finder", fg="white", bg="#333", font=("Arial", 14, "bold")).pack(side="left", padx=10, pady=10)
+        tk.Button(headerFrame, text="Logout", command=controller.logout, bg="#d9534f", fg="white").pack(side="right", padx=10, pady=10)
+        
+        # Navigation
+        navFrame = tk.Frame(self, bg="#ddd")
+        navFrame.pack(fill="x", pady=5)
+        tk.Button(navFrame, text="Refresh List", command=self.loadDorms).pack(side="left", padx=10)
+        tk.Button(navFrame, text="+ Upload Dorm", bg="#007bff", fg="white", 
+                  command=lambda: controller.showFrame("UploadPage")).pack(side="right", padx=10)
+        
+        # List Area
+        self.listFrame = tk.Frame(self, bg="#f0f0f0")
+        self.listFrame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # Scrollbar and Listbox
+        self.scrollbar = tk.Scrollbar(self.listFrame)
+        self.scrollbar.pack(side="right", fill="y")
+        
+        self.dormList = tk.Listbox(self.listFrame, font=("Arial", 12), yscrollcommand=self.scrollbar.set)
+        self.dormList.pack(side="left", fill="both", expand=True)
+        self.scrollbar.config(command=self.dormList.yview)
+        
+        # Double click to view details
+        self.dormList.bind('<Double-1>', self.viewDetails)
+        
+        # To map list index to db ID
+        self.currentDormIds = []
+
+    def onShow(self, data=None):
+        self.loadDorms()
+
+    def loadDorms(self):
+        self.dormList.delete(0, tk.END)
+        self.currentDormIds = []
+        dorms = self.controller.db.getAllDorms()
+        
+        for dorm in dorms:
+            # dorm structure: id, ownerId, location, details, price, contact, image
+            dId, _, loc, _, price, _, _ = dorm
+            displayString = f"Location: {loc}  |  Price: ${price}"
+            self.dormList.insert(tk.END, displayString)
+            self.currentDormIds.append(dId)
+
+    def viewDetails(self, event):
+        selection = self.dormList.curselection()
+        if selection:
+            index = selection[0]
+            dormId = self.currentDormIds[index]
+            self.controller.showFrame("DetailPage", dormId)
+
+class UploadPage(tk.Frame):
+    def __init__(self, parent, controller):
+        super().__init__(parent, bg="#f0f0f0")
+        self.controller = controller
+        self.imagePath = ""
+        
+        tk.Label(self, text="Upload Dorm Space", font=("Arial", 18, "bold"), bg="#f0f0f0").pack(pady=20)
+        
+        formFrame = tk.Frame(self, bg="#f0f0f0")
+        formFrame.pack()
+        
+        # Location
+        tk.Label(formFrame, text="Location:", bg="#f0f0f0").grid(row=0, column=0, sticky="e", pady=5)
+        self.locationEntry = tk.Entry(formFrame, width=40)
+        self.locationEntry.grid(row=0, column=1, pady=5)
+        
+        # Details
+        tk.Label(formFrame, text="Details:", bg="#f0f0f0").grid(row=1, column=0, sticky="ne", pady=5)
+        self.detailsText = tk.Text(formFrame, width=30, height=4)
+        self.detailsText.grid(row=1, column=1, pady=5)
+        
+        # Price
+        tk.Label(formFrame, text="Price:", bg="#f0f0f0").grid(row=2, column=0, sticky="e", pady=5)
+        self.priceEntry = tk.Entry(formFrame, width=40)
+        self.priceEntry.grid(row=2, column=1, pady=5)
+        
+        # Contact
+        tk.Label(formFrame, text="Contact Info:", bg="#f0f0f0").grid(row=3, column=0, sticky="e", pady=5)
+        self.contactEntry = tk.Entry(formFrame, width=40)
+        self.contactEntry.grid(row=3, column=1, pady=5)
+        
+        # Image
+        tk.Button(formFrame, text="Select Image (Optional)", command=self.selectImage).grid(row=4, column=0, columnspan=2, pady=10)
+        self.imageLabel = tk.Label(formFrame, text="No image selected", bg="#f0f0f0", font=("Arial", 8))
+        self.imageLabel.grid(row=5, column=0, columnspan=2)
+        
+        btnFrame = tk.Frame(self, bg="#f0f0f0")
+        btnFrame.pack(pady=20)
+        tk.Button(btnFrame, text="Save Dorm", bg="#28a745", fg="white", width=15, command=self.saveDorm).pack(side="left", padx=10)
+        tk.Button(btnFrame, text="Cancel", command=lambda: controller.showFrame("HomePage")).pack(side="right", padx=10)
+
+    def selectImage(self):
+        filename = filedialog.askopenfilename(title="Select Image", filetypes=[("Image files", "*.jpg *.jpeg *.png")])
+        if filename:
+            self.imagePath = filename
+            self.imageLabel.config(text=os.path.basename(filename))
+
+    def saveDorm(self):
+        location = self.locationEntry.get()
+        details = self.detailsText.get("1.0", tk.END).strip()
+        price = self.priceEntry.get()
+        contact = self.contactEntry.get()
+        
+        if not all([location, price, contact]):
+            messagebox.showwarning("Missing Info", "Location, Price, and Contact are required.")
+            return
+            
+        ownerId = self.controller.currentUser[0]
+        self.controller.db.addDorm(ownerId, location, details, price, contact, self.imagePath)
+        
+        messagebox.showinfo("Success", "Dorm uploaded successfully!")
+        self.clearForm()
+        self.controller.showFrame("HomePage")
+
+    def clearForm(self):
+        self.locationEntry.delete(0, tk.END)
+        self.detailsText.delete("1.0", tk.END)
+        self.priceEntry.delete(0, tk.END)
+        self.contactEntry.delete(0, tk.END)
+        self.imagePath = ""
+        self.imageLabel.config(text="No image selected")
+
+class DetailPage(tk.Frame):
+    def __init__(self, parent, controller):
+        super().__init__(parent, bg="#ffffff")
+        self.controller = controller
+        
+        self.titleLabel = tk.Label(self, text="Dorm Details", font=("Arial", 18, "bold"), bg="#ffffff")
+        self.titleLabel.pack(pady=20)
+        
+        self.infoFrame = tk.Frame(self, bg="#ffffff", padx=20)
+        self.infoFrame.pack(fill="both", expand=True)
+        
+        # Labels for data
+        self.lblLocation = tk.Label(self.infoFrame, text="", font=("Arial", 14), bg="#ffffff", anchor="w")
+        self.lblLocation.pack(fill="x", pady=5)
+        
+        self.lblPrice = tk.Label(self.infoFrame, text="", font=("Arial", 14, "bold"), fg="#28a745", bg="#ffffff", anchor="w")
+        self.lblPrice.pack(fill="x", pady=5)
+        
+        self.lblDetails = tk.Label(self.infoFrame, text="", font=("Arial", 12), bg="#ffffff", anchor="w", justify="left", wraplength=500)
+        self.lblDetails.pack(fill="x", pady=10)
+        
+        self.lblContact = tk.Label(self.infoFrame, text="", font=("Arial", 12, "italic"), bg="#ffffff", anchor="w")
+        self.lblContact.pack(fill="x", pady=5)
+        
+        self.lblImage = tk.Label(self.infoFrame, text="", font=("Arial", 10), fg="blue", bg="#ffffff")
+        self.lblImage.pack(pady=10)
+
+        tk.Button(self, text="Back to Home", command=lambda: controller.showFrame("HomePage")).pack(pady=20)
+
+    def onShow(self, dormId):
+        dormData = self.controller.db.getDormById(dormId)
+        if dormData:
+            # db schema: id, ownerId, location, details, price, contact, imagePath
+            self.lblLocation.config(text=f"Location: {dormData[2]}")
+            self.lblDetails.config(text=f"Details:\n{dormData[3]}")
+            self.lblPrice.config(text=f"Price: {dormData[4]}")
+            self.lblContact.config(text=f"Contact Owner: {dormData[5]}")
+            
+            imgPath = dormData[6]
+            if imgPath:
+                self.lblImage.config(text=f"Image File: {imgPath}")
+            else:
+                self.lblImage.config(text="No Image Provided")
+
+# --- Main Execution ---
+if __name__ == "__main__":
+    app = DormApp()
+    app.mainloop()
